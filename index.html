@@ -985,6 +985,7 @@ let userLocation = null;
 // --- uued: kiirus, väliskihid, POI, kaugusmaatriks, teekonnajuhised ---
 let speedWatchId = null;
 let speedTrackingOn = false;
+let speedTrackingFirstFix = false;
 let lastKnownSpeedLimit = null;
 let speedLimitDebounceTimer = null;
 let cadastreLayer = null;
@@ -1273,6 +1274,18 @@ function buildMap(crsMode){
   if (map){ try{ map.remove(); }catch(e){} }
   resetMapContainer();
 
+  // Kõik eelmise kaardiga seotud kihiviited muutuvad ehitamisel kehtetuks —
+  // nullime need, et miski (nt käimasolev GPS-jälgimine) ei üritaks
+  // hiljem suhelda juba eemaldatud objektidega. See oli tõenäoliselt
+  // Regio TMS-i vahetamisel esineva hangumise põhjus.
+  liveLocationMarker = null;
+  tempLayerGroup = null;
+  droneZonesLayer = null;
+  cadastreLayer = null;
+  maaametPoiLayer = null;
+  routeLayers = [];
+  if (routeAnimTimer){ clearInterval(routeAnimTimer); routeAnimTimer = null; }
+
   const opts = { zoomControl:false };
   if (crsMode === 'est'){
     try{
@@ -1296,7 +1309,10 @@ function buildMap(crsMode){
   else map.setView([58.5953, 25.0136], crsMode === 'est' ? 6 : 7);
 
   drawnItemsLayer = L.layerGroup().addTo(map);
-  poiLayer = (typeof L.markerClusterGroup === 'function')
+  // Klasterdamine kasutab pikslivahemaa-põhist matemaatikat, mis ei pruugi
+  // korrektselt käituda Regio TMS-i kohandatud EPSG:3301 projektsiooniga —
+  // seepärast kasutame EST režiimis lihtsat kihti (turvalisem, ei riski hangumisega).
+  poiLayer = (crsMode !== 'est' && typeof L.markerClusterGroup === 'function')
     ? L.markerClusterGroup({ maxClusterRadius:50, disableClusteringAtZoom:16 }).addTo(map)
     : L.layerGroup().addTo(map);
 
@@ -2142,11 +2158,13 @@ document.getElementById('toolSpeedToggle').onclick = function(){
   this.classList.toggle('active', speedTrackingOn);
   if (speedTrackingOn){
     if (!navigator.geolocation){ toast('Brauser ei toeta GPS-jälgimist.'); speedTrackingOn=false; this.classList.remove('active'); return; }
-    toast('Kiiruse jälgimine sees. Töötab kõige paremini mobiilis/GPS-iga seadmel.');
+    toast('Kiiruse jälgimine sees. Otsin asukohta...');
     document.getElementById('dashSpeedBlock').style.opacity = '1';
+    speedTrackingFirstFix = true;
     speedWatchId = navigator.geolocation.watchPosition(onSpeedPosition, err=>{
       document.getElementById('speedReadout').textContent = '—';
       updateSpeedDashboard(null);
+      toast('GPS-viga: ' + err.message);
     }, { enableHighAccuracy:true, maximumAge:2000 });
   } else {
     if (speedWatchId != null) navigator.geolocation.clearWatch(speedWatchId);
@@ -2218,17 +2236,31 @@ function onSpeedPosition(pos){
     updateSpeedDashboard(null);
   }
   updateLiveLocationMarker(pos.coords.latitude, pos.coords.longitude, inferLiveMode(speedMs), pos.coords.heading);
+  if (speedTrackingFirstFix){
+    speedTrackingFirstFix = false;
+    map.setView([pos.coords.latitude, pos.coords.longitude], Math.max(map.getZoom(), 16));
+    toast('Asukoht leitud — marker kaardil.');
+  }
   if (Date.now() < speedLimitBlockedUntil) return; // äsja ebaõnnestus, ei proovi kohe uuesti
   clearTimeout(speedLimitDebounceTimer);
   speedLimitDebounceTimer = setTimeout(()=>fetchSpeedLimit(pos.coords.latitude, pos.coords.longitude), 1500);
 }
 
+const OVERPASS_MIRRORS = [
+  'https://overpass-api.de/api/interpreter',
+  'https://overpass.kumi.systems/api/interpreter',
+  'https://overpass.private.coffee/api/interpreter'
+];
+let overpassMirrorIndex = 0;
+
 async function fetchSpeedLimit(lat, lng){
+  const q = `[out:json][timeout:10];way(around:40,${lat},${lng})[highway][maxspeed];out tags 3;`;
+  const mirror = OVERPASS_MIRRORS[overpassMirrorIndex % OVERPASS_MIRRORS.length];
   try{
     // Overpass API: otsi lähim tee (highway) 40m raadiuses ja loe selle maxspeed silt.
     // NB: see päring vajab, et leht oleks avatud http(s)-serverist, mitte file:// kaudu.
-    const q = `[out:json][timeout:10];way(around:40,${lat},${lng})[highway][maxspeed];out tags 3;`;
-    const url = 'https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(q);
+    // Avalik Overpass-teenus on aeg-ajalt üle koormatud (504) — proovime mitut peeglit kordamööda.
+    const url = mirror + '?data=' + encodeURIComponent(q);
     const res = await fetch(url);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
@@ -2246,6 +2278,8 @@ async function fetchSpeedLimit(lat, lng){
   } catch(err){
     document.getElementById('speedLimitReadout').textContent = '—';
     updateSpeedLimitDashboard(null);
+    // järgmisel korral proovime teist Overpass peeglit, kuna see üks nurjus
+    overpassMirrorIndex = (overpassMirrorIndex + 1) % OVERPASS_MIRRORS.length;
     // tagasilöök: ära proovi uuesti järgmise 60 sekundi jooksul, kui see ebaõnnestus
     // (nt CORS-piirang file:// kontekstis) — vältimaks konsooli/võrgu ummistamist
     speedLimitBlockedUntil = Date.now() + 60000;
