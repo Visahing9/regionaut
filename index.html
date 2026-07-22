@@ -253,8 +253,12 @@
   .wx-day .wx-bar-fill{ position:absolute; height:100%; border-radius:2px; background:linear-gradient(90deg, var(--blue), var(--rust)); }
 
   /* ---------- MAP AREA ---------- */
-  #mapWrap{flex:1; position:relative;}
-  #map{width:100%; height:100%; background:#0c1015;}
+  #mapWrap{flex:1; position:relative; overflow:hidden;}
+  #map{
+    width:100%; height:100%; background:#0c1015;
+    transition: transform 1s linear; transform-origin: 50% 50%;
+  }
+  #map.rotating-map{ cursor:default; }
 
   #drawToolbar{
     position:absolute; top:14px; right:14px; z-index:500; display:flex; flex-direction:column; gap:4px;
@@ -270,6 +274,10 @@
   .tool-btn:hover{border-color: var(--icon-color, var(--rust));}
   .tool-btn.active{
     background: var(--icon-color, var(--rust)); border-color: var(--icon-color, var(--rust)); color:#fff;
+  }
+  .tool-btn.rotating{
+    background: var(--rust) !important; border-color: var(--rust) !important; color:#fff;
+    box-shadow: 0 0 0 3px var(--rust-soft);
   }
 
   #helpButton{
@@ -388,7 +396,8 @@
     100%{ transform:translateY(0) scale(1); }
   }
   .poi-pin{ animation: dropIn .35s ease-out; }
-  .live-location-icon{ transition: transform 0.4s linear; }
+  /* Positsiooni interpoleerime nüüd ise JS-iga (rAF) — CSS transitioni siin
+     EI kasutata, kuna see tekitaks topeltsilumise (lag) juba interpoleeritud punktide vahel. */
   @keyframes liveGlow{
     0%, 100%{ box-shadow: 0 0 0 0 var(--rust-soft), 0 3px 14px -2px #000000aa; }
     50%{ box-shadow: 0 0 0 12px transparent, 0 3px 14px -2px #000000aa; }
@@ -450,9 +459,48 @@
     #btnStopNav{ width:26px !important; height:26px !important; }
     #btnStopNav svg{ width:14px !important; height:14px !important; }
   }
+
+  /* ---------- LAADIMISEKRAAN ---------- */
+  #loadingScreen{
+    position:fixed; inset:0; z-index:9999; background:#0a0a0a;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:26px;
+    transition: opacity .55s cubic-bezier(.4,0,.2,1), transform .55s cubic-bezier(.4,0,.2,1), filter .55s ease;
+  }
+  #loadingScreen.hide{ opacity:0; transform:scale(1.12); filter:blur(6px); pointer-events:none; }
+  #loadingLogoWrap{
+    display:flex; align-items:center; gap:10px;
+    animation: loadingPulse 1.7s ease-in-out infinite;
+  }
+  #loadingLogoSvg{ width:min(38vw, 150px); height:auto; color:#f5f5f5; }
+  #loadingNav{
+    font-family:'JetBrains Mono', monospace; font-weight:700; letter-spacing:5px;
+    font-size:min(8vw, 34px); color:#f2960a;
+  }
+  @keyframes loadingPulse{
+    0%, 100%{ opacity:1; transform:scale(1); }
+    50%{ opacity:.82; transform:scale(1.035); }
+  }
+  #loadingBarTrack{ width:160px; height:3px; border-radius:2px; background:#242424; overflow:hidden; }
+  #loadingBarFill{
+    width:35%; height:100%; border-radius:2px;
+    background:linear-gradient(90deg,#e8830a,#ffcf1e);
+    animation: loadingSlide 1.15s cubic-bezier(.4,0,.2,1) infinite;
+  }
+  @keyframes loadingSlide{
+    0%{ transform:translateX(-140%); }
+    100%{ transform:translateX(400%); }
+  }
 </style>
 </head>
 <body>
+
+<div id="loadingScreen">
+  <div id="loadingLogoWrap">
+    <svg id="loadingLogoSvg" viewBox="0 0 168 48"><path d="M168,23.944v-.106c0-10.463-8.373-18.843-19.678-18.843s-19.785,8.483-19.785,18.95v.105c0,10.461,8.371,18.844,19.683,18.844S168,34.415,168,23.944ZM148.22,14.1c5.6,0,9.418,4.584,9.418,9.84v.1c0,5.254-3.718,9.732-9.315,9.732-5.555,0-9.372-4.578-9.372-9.837v-.107C138.951,18.579,142.668,14.1,148.22,14.1ZM112.882,42.167h10.209V5.724H112.882Zm-14.494-13.9a7.754,7.754,0,0,1-7.689,5.88,11.622,11.622,0,0,1-3.84-.546,9.835,9.835,0,0,1-3.222-1.882,10.075,10.075,0,0,1-3.282-7.269l-.012-.1c-.215-5.565,3.679-10.155,8.959-10.365a12.653,12.653,0,0,1,4.106.483l.78.248L100.422.552,99.165,0c-.51.8-4.826,5.094-8.121,4.995q-1.076-.046-2.154,0c-11.349.448-19.38,9.1-18.951,19.719l0,.1a18.255,18.255,0,0,0,7.74,14.418c1.853,1.353,5.9-3.162,5.9-3.162l1.116.46L79.9,47.452l1.26.548s4.578-5.2,8.188-5.006a12.915,12.915,0,0,0,1.32,0c11.9-.475,17.976-10.321,17.6-19.683q-.047-1.225-.165-2.445l-11.064.007c-3.63,0-5.77,1.17-7.782,5.23L88.2,28.264ZM37.666,42.236V5.724H67.11v8.591H47.685v5.512H61.8V27.8H47.685v5.775H67.362v8.663h-29.7ZM16.99,23.2h-4.1s-1.446,3.363,2.2,8.713l6.9,10.254H33.708l-8.745-12.7a11.53,11.53,0,0,0,7.545-11.194v-.1a11.259,11.259,0,0,0-3.251-8.487c-2.46-2.5-6.33-3.957-11.933-3.957H0V42.167H10.151v-27.7H16.8c3.405,0,5.495,1.459,5.495,4.326v.1c0,1.829-1.312,4.3-5.306,4.3Z" fill="currentColor" fill-rule="evenodd"/></svg>
+    <span id="loadingNav">NAV</span>
+  </div>
+  <div id="loadingBarTrack"><div id="loadingBarFill"></div></div>
+</div>
 
 <div id="fileProtocolBanner">
   <span>⚠️ <span data-i18n="banner.file">Fail on avatud otse arvutist (file://) — Maa-ameti kihid, kiiruspiirang ja mõned muud päringud ei pruugi CORS-piirangute tõttu töötada.</span> <a href="#" id="fileProtocolHelpLink" data-i18n="banner.link">Loe, kuidas seda lahendada</a></span>
@@ -623,11 +671,12 @@
         <h3 class="section-title">Alusekaart</h3>
         <select id="baseLayerSelect">
           <option value="osm">OpenStreetMap (vaikimisi, võtit vaja pole)</option>
-          <option value="regio-tms">Regio TMS (EPSG:3301)</option>
+          <option value="regio-tms">Regio kaart (TMS, kiirem)</option>
+          <option value="regio-wms">Regio kaart (WMS, aeglasem)</option>
           <option value="maaamet">Maa-amet põhikaart (tasuta, võtit vaja pole)</option>
           <option value="osm-dark">OpenStreetMap — tume</option>
         </select>
-        <p class="hint" style="margin-top:6px;" data-i18n="layers.hint">Regio TMS on Regio enda valmis renderdatud kaart. Maa-ameti põhikaart on Eesti riiklik aluskaart, tasuta ja avalik.</p>
+        <p class="hint" style="margin-top:6px;" data-i18n="layers.hint">Regio kaardi kaks varianti: TMS on tavaliselt kiirem (väikesed tükid, vahemällu salvestuvad), WMS annab garanteeritult õige väljanägemise, aga on aeglasem. Proovi, kumb sinu jaoks paremini töötab. Maa-ameti põhikaart on Eesti riiklik aluskaart, tasuta ja avalik.</p>
       </div>
       <div>
         <h3 class="section-title" data-i18n="layers.maaametTitle">Maa-ameti lisakihid</h3>
@@ -788,9 +837,9 @@
       <div>
         <h3 class="section-title" data-i18n="help.layers.title">🗺️ Kihid</h3>
         <p class="hint" data-i18n="help.layers.body">
-          Alusekaardiks OpenStreetMap (tasuta), Regio TMS (vajab API võtit) või Maa-ameti põhikaart (tasuta, riiklik).
+          Alusekaardiks OpenStreetMap (tasuta), Regio kaart WMS-ina (vajab API võtit) või Maa-ameti põhikaart (tasuta, riiklik).
           Katastripiirid ja Maa-ameti huvipunktid on lisakihid, mis avastavad õige andmestruktuuri Maa-ameti serverist
-          automaatselt — need töötavad ainult koos OpenStreetMap või Maa-amet alusekaardiga (mitte Regio TMS-iga, sest
+          automaatselt — need töötavad ainult koos OpenStreetMap või Maa-amet alusekaardiga (mitte Regio kaardiga, sest
           koordinaatsüsteemid ei ühildu). Droonipiirangute kiht tuleb otse EANS/Transpordiameti ametlikust avalikust
           andmestikust — see on abimaterjal, enne päris lendu kontrolli alati ametlikku droonikaarti (utm.eans.ee/avm).
         </p>
@@ -1017,6 +1066,8 @@ let speedWatchId = null;
 let speedTrackingOn = false;
 let speedTrackingFirstFix = false;
 let followMode = false;
+let rotateMode = false;
+let mapRotationDeg = 0;
 let lastKnownSpeedLimit = null;
 let speedLimitDebounceTimer = null;
 let cadastreLayer = null;
@@ -1086,7 +1137,7 @@ const I18N = {
     'weather.mapTitle': 'Temperatuurikiht kaardil',
     'weather.mapHint': 'Näitab hetketemperatuuri võrgustikuna üle Baltikumi (Open-Meteo, tasuta, ei vaja võtit).',
     'weather.mapToggle': 'Näita temperatuurikihti', 'weather.refresh': '🔄 Värskenda ilmaandmeid',
-    'layers.hint': 'Regio TMS on Regio enda valmis renderdatud kaart. Maa-ameti põhikaart on Eesti riiklik aluskaart, tasuta ja avalik.',
+    'layers.hint': 'Regio kaardi kaks varianti: TMS on tavaliselt kiirem (väikesed tükid, vahemällu salvestuvad), WMS annab garanteeritult õige väljanägemise, aga on aeglasem. Proovi, kumb sinu jaoks paremini töötab. Maa-ameti põhikaart on Eesti riiklik aluskaart, tasuta ja avalik.',
     'layers.maaametTitle': 'Maa-ameti lisakihid', 'layers.cadastre': 'Katastripiirid', 'layers.maaametPois': 'Maa-ameti huvipunktid (POI)',
     'layers.maaametHint': 'Need kihid avastavad õige andmestruktuuri automaatselt Maa-ameti serverist esimesel sisselülitamisel — võib hetke aega võtta.',
     'layers.droneTitle': 'Droonipiirangud',
@@ -1127,7 +1178,7 @@ const I18N = {
     'help.random.title': '🎲 Juhuslik koht',
     'help.random.body': 'Viib sind kas juhusliku enda lisatud objekti juurde või juhuslikku kohta Baltikumis (koos aadressiga) — hea avastamiseks.',
     'help.layers.title': '🗺️ Kihid',
-    'help.layers.body': 'Alusekaardiks OpenStreetMap (tasuta), Regio TMS (vajab API võtit) või Maa-ameti põhikaart (tasuta, riiklik). Katastripiirid ja Maa-ameti huvipunktid on lisakihid, mis avastavad õige andmestruktuuri Maa-ameti serverist automaatselt — need töötavad ainult koos OpenStreetMap või Maa-amet alusekaardiga (mitte Regio TMS-iga, sest koordinaatsüsteemid ei ühildu). Droonipiirangute kiht tuleb EANS/Transpordiameti ametlikust avalikust andmestikust — see on abimaterjal, enne lendu kontrolli alati ametlikku droonikaarti (utm.eans.ee/avm).',
+    'help.layers.body': 'Alusekaardiks OpenStreetMap (tasuta), Regio kaart WMS-ina (vajab API võtit) või Maa-ameti põhikaart (tasuta, riiklik). Katastripiirid ja Maa-ameti huvipunktid on lisakihid, mis avastavad õige andmestruktuuri Maa-ameti serverist automaatselt — need töötavad ainult koos OpenStreetMap või Maa-amet alusekaardiga (mitte Regio kaardiga, sest koordinaatsüsteemid ei ühildu). Droonipiirangute kiht tuleb EANS/Transpordiameti ametlikust avalikust andmestikust — see on abimaterjal, enne lendu kontrolli alati ametlikku droonikaarti (utm.eans.ee/avm).',
     'help.share.title': '🔗 Jagamine ja embed',
     'help.share.body': '"🔗 Vaade" kopeerib lingi, mis avab kaardi samas asukohas/suumis. "📡 Jaga kõik objektid" kopeerib lingi, mis sisaldab KÕIKI sinu objekte — kui keegi teine selle lingi avab, küsitakse temalt, kas ta soovib need oma kaardile importida. "🖼️ Embed" genereerib &lt;iframe&gt; koodi, et see kaart mõnele teisele veebilehele sisse panna (fail peab olema selleks avalikult veebis kättesaadav, mitte file://).',
     'help.data.title': '💾 Andmed ja varundus',
@@ -1171,7 +1222,7 @@ const I18N = {
     'route.matrixCalc': '📐 Calculate distance matrix', 'route.savedTitle': 'Saved routes', 'route.save': '💾 Save current route',
     'route.aiTitle': '🤖 AI route (for the future)', 'route.aiGenerate': '✨ Generate route from description',
     'route.aiHint': 'This feature is currently a placeholder — it will need an AI service (e.g. Claude API) key in the future to turn your description into real stops and a route. The button shows where that will happen.',
-    'layers.hint': 'Regio TMS is Regio\'s own pre-rendered map. The Maa-amet base map is Estonia\'s national basemap, free and public.',
+    'layers.hint': 'Two Regio map options: TMS is usually faster (small cached tiles), WMS guarantees the exact official look but is slower. Try both to see which works better for you. The Maa-amet base map is Estonia\'s national basemap, free and public.',
     'layers.maaametTitle': 'Maa-amet layers', 'layers.cadastre': 'Cadastral boundaries', 'layers.maaametPois': 'Maa-amet points of interest (POI)',
     'layers.maaametHint': 'These layers auto-discover the correct data structure from the Maa-amet server the first time you switch them on — this may take a moment.',
     'layers.droneTitle': 'Drone restrictions',
@@ -1212,7 +1263,7 @@ const I18N = {
     'help.random.title': '🎲 Random spot',
     'help.random.body': 'Takes you to either a random one of your own objects or a random spot in the Baltics (with its address) — good for discovery.',
     'help.layers.title': '🗺️ Layers',
-    'help.layers.body': 'Base map options: OpenStreetMap (free), Regio TMS (needs an API key), or the Maa-amet base map (free, national). Cadastral boundaries and Maa-amet POIs are extra layers that auto-discover the right data structure from the Maa-amet server — these only work together with OpenStreetMap or the Maa-amet base map (not Regio TMS, since the coordinate systems don\'t match). The drone restriction layer comes from EANS/Transport Administration\'s official public dataset — it\'s an informational aid, always check the official drone map (utm.eans.ee/avm) before flying.',
+    'help.layers.body': 'Base map options: OpenStreetMap (free), the Regio map as WMS (needs an API key), or the Maa-amet base map (free, national). Cadastral boundaries and Maa-amet POIs are extra layers that auto-discover the right data structure from the Maa-amet server — these only work together with OpenStreetMap or the Maa-amet base map (not the Regio map, since the coordinate systems don\'t match). The drone restriction layer comes from EANS/Transport Administration\'s official public dataset — it\'s an informational aid, always check the official drone map (utm.eans.ee/avm) before flying.',
     'help.share.title': '🔗 Sharing and embed',
     'help.share.body': '"🔗 View" copies a link that opens the map at the same location/zoom. "📡 Share all objects" copies a link containing ALL of your objects — if someone else opens it, they\'ll be asked whether they want to import them onto their own map. "🖼️ Embed" generates &lt;iframe&gt; code to put this map on another website (the file needs to be publicly hosted on the web for this, not file://).',
     'help.data.title': '💾 Data and backup',
@@ -1319,6 +1370,7 @@ function buildMap(crsMode){
   cadastreLayer = null;
   maaametPoiLayer = null;
   speedCamLayer = null;
+  regioWmsOverlay = null;
   routeLayers = [];
   if (routeAnimTimer){ clearInterval(routeAnimTimer); routeAnimTimer = null; }
 
@@ -1328,7 +1380,7 @@ function buildMap(crsMode){
       opts.crs = buildEstCRS();
       opts.minZoom = 0; opts.maxZoom = 17;
     } catch(err){
-      toast('Regio TMS (EPSG:3301) ei saanud laadida: ' + err.message + ' — jään OSM juurde.');
+      toast('Regio kaardi projektsioon (EPSG:3301) ei saanud laadida: ' + err.message + ' — jään OSM juurde.');
       crsMode = 'web';
       settings.baseLayer = 'osm';
       saveSettings();
@@ -1352,9 +1404,16 @@ function buildMap(crsMode){
     ? L.markerClusterGroup({ maxClusterRadius:50, disableClusteringAtZoom:16 }).addTo(map)
     : L.layerGroup().addTo(map);
 
-  baseLayer = tileLayerForKind(settings.baseLayer || 'osm');
-  if (!baseLayer) baseLayer = defaultOsm();
-  baseLayer.addTo(map);
+  baseLayer = null;
+  if (settings.baseLayer === 'regio-wms'){
+    refreshRegioWmsOverlay();
+  } else {
+    baseLayer = tileLayerForKind(settings.baseLayer || 'osm');
+    if (!baseLayer) baseLayer = defaultOsm();
+    baseLayer.addTo(map);
+  }
+  map.on('moveend', scheduleRegioWmsRefresh);
+  map.on('zoomend', scheduleRegioWmsRefresh);
 
   map.on('mousemove', e=>{
     document.getElementById('coordReadout').textContent = e.latlng.lat.toFixed(5) + ', ' + e.latlng.lng.toFixed(5);
@@ -1396,7 +1455,7 @@ function buildMap(crsMode){
   }
 }
 
-function crsModeFor(kind){ return kind === 'regio-tms' ? 'est' : 'web'; }
+function crsModeFor(kind){ return (kind === 'regio-tms' || kind === 'regio-wms') ? 'est' : 'web'; }
 
 /* ---------------- kaardi keskme info: ilm + päike (ei vaja Regio võtit) ---------------- */
 let centerInfoTimer;
@@ -1700,8 +1759,54 @@ function tileLayerForKind(kind){
   return defaultOsm();
 }
 
+/* ---------------- Regio WMS (teine alusekaardi valik TMS-i kõrval) ----------------
+   Regio enda ametlik OpenLayers-näide kasutab WMS-i "singleTile:true" moel —
+   üks suur pilt kogu vaate kohta. See annab garanteeritult õige väljanägemise,
+   aga on aeglasem kui tükeldatud TMS (mis laeb paralleelselt ja vahemällu). */
+let regioWmsOverlay = null;
+let regioWmsDebounceTimer = null;
+
+function refreshRegioWmsOverlay(){
+  if (!map || !settings.apiKey || currentCrsMode !== 'est' || settings.baseLayer !== 'regio-wms') return;
+  map.invalidateSize();
+  const size = map.getSize();
+  if (size.x < 2 || size.y < 2) return;
+  const bounds = map.getBounds();
+  const crs = map.options.crs;
+  const swP = crs.project(bounds.getSouthWest());
+  const neP = crs.project(bounds.getNorthEast());
+  const minX = Math.min(swP.x, neP.x), maxX = Math.max(swP.x, neP.x);
+  const minY = Math.min(swP.y, neP.y), maxY = Math.max(swP.y, neP.y);
+  const bbox = `${minX},${minY},${maxX},${maxY}`;
+  // Väiksem eraldusvõime (0.75x) laseb Regio serveril pilti kiiremini renderdada —
+  // brauser venitab selle sujuvalt kaardi suurusesse, kvaliteedivahe on minimaalne.
+  const reqW = Math.round(size.x * 0.75), reqH = Math.round(size.y * 0.75);
+  // REGIO CONFIG: parameetrid täpselt Regio enda dokumentatsiooni näite järgi
+  // (FORMAT=PNG, mitte image/png; REQUEST=Getmap, mitte GetMap) — server võib
+  // olla nende täpse kirjapildi suhtes tundlik.
+  const url = `https://api.regio.ee/wms?SERVICE=WMS&REQUEST=Getmap&VERSION=1.1.1&FORMAT=PNG&MAP=/map/balti_wms.map&LAYERS=balti&SRS=EPSG:3301&BBOX=${bbox}&WIDTH=${reqW}&HEIGHT=${reqH}&apikey=${encodeURIComponent(settings.apiKey)}`;
+
+  if (!regioWmsOverlay) toast('Laen Regio kaarti...');
+  const fresh = L.imageOverlay(url, bounds, { opacity:1, className:'regio-wms-img' });
+  fresh.once('load', ()=>{
+    if (regioWmsOverlay && regioWmsOverlay !== fresh) map.removeLayer(regioWmsOverlay);
+    regioWmsOverlay = fresh;
+  });
+  fresh.once('error', ()=>{
+    try{ map.removeLayer(fresh); }catch(e){}
+    if (!regioWmsOverlay) toast('Regio kaardi laadimine ebaõnnestus — proovi uuesti või vali teine alusekaart.');
+  });
+  fresh.addTo(map);
+}
+
+function scheduleRegioWmsRefresh(){
+  if (currentCrsMode !== 'est' || settings.baseLayer !== 'regio-wms') return;
+  clearTimeout(regioWmsDebounceTimer);
+  regioWmsDebounceTimer = setTimeout(refreshRegioWmsOverlay, 550);
+}
+
 function setBaseLayer(kind){
-  if (kind === 'regio-tms' && !settings.apiKey){
+  if ((kind === 'regio-tms' || kind === 'regio-wms') && !settings.apiKey){
     toast('Lisa enne Regio API võti Seaded vahekaardil.');
     document.getElementById('baseLayerSelect').value = settings.baseLayer || 'osm';
     return;
@@ -1710,10 +1815,17 @@ function setBaseLayer(kind){
   saveSettings();
   const needed = crsModeFor(kind);
   if (needed !== currentCrsMode){ buildMap(needed); return; }
-  if (baseLayer) map.removeLayer(baseLayer);
-  baseLayer = tileLayerForKind(kind);
-  if (!baseLayer) baseLayer = defaultOsm();
-  baseLayer.addTo(map);
+  // Sama CRS-rühma sees (nt TMS ↔ WMS, mõlemad EST) saab kihti vahetada
+  // ilma kogu kaarti uuesti ehitamata — kiirem vahetus.
+  if (baseLayer){ map.removeLayer(baseLayer); baseLayer = null; }
+  if (regioWmsOverlay){ map.removeLayer(regioWmsOverlay); regioWmsOverlay = null; }
+  if (kind === 'regio-wms'){
+    refreshRegioWmsOverlay();
+  } else {
+    baseLayer = tileLayerForKind(kind);
+    if (!baseLayer) baseLayer = defaultOsm();
+    baseLayer.addTo(map);
+  }
 }
 
 document.getElementById('baseLayerSelect').addEventListener('change', (e)=> setBaseLayer(e.target.value));
@@ -1767,7 +1879,7 @@ document.getElementById('toggleCadastre').addEventListener('change', async (e)=>
     return;
   }
   if (currentCrsMode === 'est'){
-    toast('Katastripiirid ei toimi koos Regio TMS alusekaardiga (koordinaatsüsteemide konflikt). Vali enne OpenStreetMap või Maa-amet alusekaart.');
+    toast('Katastripiirid ei toimi koos Regio kaardiga (koordinaatsüsteemide konflikt). Vali enne OpenStreetMap või Maa-amet alusekaart.');
     e.target.checked = false;
     return;
   }
@@ -2134,6 +2246,7 @@ function drawLibMissing(){
 }
 
 document.getElementById('toolPoi').onclick = function(){
+  if (rotateModeGuard()) return;
   const isActive = this.classList.contains('active');
   deactivateTools();
   if (isActive) return;
@@ -2158,6 +2271,7 @@ document.getElementById('toolPoi').onclick = function(){
 };
 
 document.getElementById('toolPolygon').onclick = function(){
+  if (rotateModeGuard()) return;
   if (drawLibMissing()) return;
   const isActive = this.classList.contains('active');
   deactivateTools();
@@ -2169,6 +2283,7 @@ document.getElementById('toolPolygon').onclick = function(){
 };
 
 document.getElementById('toolLine').onclick = function(){
+  if (rotateModeGuard()) return;
   if (drawLibMissing()) return;
   const isActive = this.classList.contains('active');
   deactivateTools();
@@ -2180,6 +2295,7 @@ document.getElementById('toolLine').onclick = function(){
 };
 
 document.getElementById('toolIdentify').onclick = function(){
+  if (rotateModeGuard()) return;
   const isActive = this.classList.contains('active');
   deactivateTools();
   if (isActive) return;
@@ -2201,7 +2317,55 @@ document.getElementById('toolIdentify').onclick = function(){
    Kiiruspiirang tuleb OSM Overpass API-st (tasuta, avalik) — otsib lähima tee "maxspeed" sildi. */
 function updateLocateButtonVisual(){
   document.getElementById('toolLocate').classList.toggle('active', speedTrackingOn && followMode);
+  document.getElementById('toolLocate').classList.toggle('rotating', rotateMode);
   document.getElementById('toolSpeedToggle').classList.toggle('active', speedTrackingOn);
+}
+
+/* ---------------- sõidusuunas kaardi pööramine ("heading-up") ----------------
+   TURVAPIIRANG: Leaflet ei tea CSS-pöördest midagi, seega läheksid klõpsu-
+   koordinaadid (POI lisamine, joonistamine jms) valeks, kui lubaksime neid
+   samal ajal kasutada. Seepärast keelame pööramise ajaks kõik kaardi otsesed
+   käsitsi-interaktsioonid (lohistamine, suumimine, klõpsu-tööriistad) — kaart
+   on siis puhtalt "vaata ja järgi" režiimis, mis on täiesti ohutu, kuna miski
+   ei sõltu enam täpsest klõpsu-koordinaadist. */
+function rotateModeGuard(){
+  if (rotateMode){
+    toast('Välju kompassirežiimist (🧭 nupp), et objekte lisada või kaarti käsitsi liigutada.');
+    return true;
+  }
+  return false;
+}
+
+function setMapRotation(heading){
+  mapRotationDeg = ((heading % 360) + 360) % 360;
+  const el = document.getElementById('map');
+  if (el) el.style.transform = `rotate(${-mapRotationDeg}deg) scale(1.5)`;
+}
+
+function enableRotateMode(){
+  rotateMode = true;
+  map.dragging.disable();
+  map.scrollWheelZoom.disable();
+  map.doubleClickZoom.disable();
+  if (map.touchZoom) map.touchZoom.disable();
+  if (map.tap) map.tap.disable();
+  document.getElementById('map').classList.add('rotating-map');
+  setMapRotation(mapRotationDeg);
+  updateLocateButtonVisual();
+  toast('Sõidusuunas vaade sees. Objektide lisamiseks/kaardi liigutamiseks vajuta 🧭 uuesti.');
+}
+
+function disableRotateMode(){
+  rotateMode = false;
+  map.dragging.enable();
+  map.scrollWheelZoom.enable();
+  map.doubleClickZoom.enable();
+  if (map.touchZoom) map.touchZoom.enable();
+  if (map.tap) map.tap.enable();
+  const el = document.getElementById('map');
+  if (el){ el.style.transform = ''; el.classList.remove('rotating-map'); }
+  mapRotationDeg = 0;
+  updateLocateButtonVisual();
 }
 
 function startLocationTracking(){
@@ -2236,6 +2400,7 @@ function stopLocationTracking(){
   speedWatchId = null;
   speedTrackingOn = false;
   followMode = false;
+  if (rotateMode) disableRotateMode();
   document.getElementById('speedReadout').textContent = '—';
   document.getElementById('speedLimitReadout').textContent = '—';
   updateSpeedDashboard(null);
@@ -2247,7 +2412,18 @@ function stopLocationTracking(){
 }
 
 document.getElementById('toolLocate').onclick = function(){
-  if (speedTrackingOn && followMode) stopLocationTracking(); else startLocationTracking();
+  if (!speedTrackingOn){
+    startLocationTracking(); // → jälgimine + järgimine sees
+  } else if (!followMode){
+    // jälgimine on sees, aga järgimine oli käsitsi liigutamisega peatatud — jätka
+    followMode = true;
+    if (liveLocationMarker) map.panTo(liveLocationMarker.getLatLng(), { animate:true });
+    updateLocateButtonVisual();
+  } else if (!rotateMode){
+    enableRotateMode(); // → sõidusuunas pööramine sees
+  } else {
+    disableRotateMode(); // → tagasi tavalisse "järgi" olekusse (jälgimine jätkub)
+  }
 };
 document.getElementById('toolSpeedToggle').onclick = function(){
   if (speedTrackingOn) stopLocationTracking(); else startLocationTracking();
@@ -2279,17 +2455,64 @@ function inferLiveMode(speedMs){
   return (speedMs * 3.6) < 7 ? 'foot' : 'car';
 }
 
+let liveMarkerCurrentLatLng = null;
+let liveMarkerCurrentHeading = 0;
+let liveMarkerAnimId = 0;
+
+function shortestAngleDelta(from, to){
+  return ((to - from + 180) % 360 + 360) % 360 - 180;
+}
+
+function liveMarkerHtml(mode, heading){
+  return `<div class="live-location-dot" style="width:36px;height:36px;border-radius:50%;background:var(--rust);border:3px solid #fff;
+    display:flex;align-items:center;justify-content:center;transform:rotate(${heading}deg);">${liveModeIconInner(mode)}</div>`;
+}
+
+// Sujuv liikumine: selle asemel, et markerit iga GPS-uuendusega hüpitada,
+// interpoleerime rAF-iga vanast asukohast/suunast uude ~900ms jooksul —
+// tulemus on ühtlane libisemine, mitte tõksumine.
 function updateLiveLocationMarker(lat, lng, mode, heading){
-  const rot = (heading != null && !isNaN(heading)) ? `transform:rotate(${heading}deg);` : '';
-  const html = `<div class="live-location-dot" style="width:36px;height:36px;border-radius:50%;background:var(--rust);border:3px solid #fff;
-    display:flex;align-items:center;justify-content:center;${rot}">${liveModeIconInner(mode)}</div>`;
-  const icon = L.divIcon({ className:'live-location-icon', html, iconSize:[36,36], iconAnchor:[18,18] });
+  const targetLatLng = L.latLng(lat, lng);
+  const targetHeading = (heading != null && !isNaN(heading)) ? heading : liveMarkerCurrentHeading;
+
   if (!liveLocationMarker){
-    liveLocationMarker = L.marker([lat,lng], { icon, interactive:false, zIndexOffset:2000 }).addTo(map);
-  } else {
-    liveLocationMarker.setLatLng([lat,lng]);
-    liveLocationMarker.setIcon(icon);
+    liveMarkerCurrentLatLng = targetLatLng;
+    liveMarkerCurrentHeading = targetHeading;
+    const icon = L.divIcon({ className:'live-location-icon', html: liveMarkerHtml(mode, targetHeading), iconSize:[36,36], iconAnchor:[18,18] });
+    liveLocationMarker = L.marker(targetLatLng, { icon, interactive:false, zIndexOffset:2000 }).addTo(map);
+    liveLocationMarker.__mode = mode;
+    return;
   }
+
+  if (mode !== liveLocationMarker.__mode){
+    liveLocationMarker.__mode = mode;
+    liveLocationMarker.setIcon(L.divIcon({ className:'live-location-icon', html: liveMarkerHtml(mode, targetHeading), iconSize:[36,36], iconAnchor:[18,18] }));
+  }
+
+  const startLatLng = liveMarkerCurrentLatLng || liveLocationMarker.getLatLng();
+  const startHeading = liveMarkerCurrentHeading;
+  const headingDelta = shortestAngleDelta(startHeading, targetHeading);
+  const duration = 900;
+  const startTime = performance.now();
+  const animId = ++liveMarkerAnimId;
+
+  function step(now){
+    if (animId !== liveMarkerAnimId || !liveLocationMarker) return;
+    const t = Math.min(1, (now - startTime) / duration);
+    const curLat = startLatLng.lat + (targetLatLng.lat - startLatLng.lat) * t;
+    const curLng = startLatLng.lng + (targetLatLng.lng - startLatLng.lng) * t;
+    const curHeading = startHeading + headingDelta * t;
+    liveLocationMarker.setLatLng([curLat, curLng]);
+    const el = liveLocationMarker.getElement();
+    if (el){
+      const inner = el.querySelector('.live-location-dot');
+      if (inner) inner.style.transform = `rotate(${curHeading}deg)`;
+    }
+    liveMarkerCurrentLatLng = L.latLng(curLat, curLng);
+    liveMarkerCurrentHeading = curHeading;
+    if (t < 1) requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
 }
 
 function maybeRemoveLiveLocationMarker(){
@@ -2324,7 +2547,12 @@ function onSpeedPosition(pos){
     map.setView([markerLat, markerLng], Math.max(map.getZoom(), 16));
     toast('Asukoht leitud.');
   } else if (followMode){
-    map.setView([markerLat, markerLng], map.getZoom(), { animate:true });
+    // panTo koos kestusega annab palju sujuvama, ühtlasema liikumise kui
+    // korduv setView (mis katkestab eelmise animatsiooni ja tekitab tõksumist).
+    map.panTo([markerLat, markerLng], { animate:true, duration:0.9, easeLinearity:0.4, noMoveStart:true });
+  }
+  if (rotateMode && pos.coords.heading != null && !isNaN(pos.coords.heading)){
+    setMapRotation(pos.coords.heading);
   }
 
   if (Date.now() < speedLimitBlockedUntil) return; // äsja ebaõnnestus, ei proovi kohe uuesti
@@ -2340,19 +2568,34 @@ const OVERPASS_MIRRORS = [
 let overpassMirrorIndex = 0;
 
 async function fetchSpeedLimit(lat, lng){
-  const q = `[out:json][timeout:10];way(around:40,${lat},${lng})[highway][maxspeed];out tags 3;`;
+  // Täpsuse parandus: küsime geomeetriat (mitte ainult silte) mitmele
+  // kandidaat-teele ja valime nende hulgast TEGELIKULT lähima, mitte
+  // lihtsalt esimese, mille Overpass juhtub tagastama — see vähendab
+  // olukordi, kus rakendus näitab kõrvaltänava/paralleeltee piirangut.
+  const q = `[out:json][timeout:10];way(around:20,${lat},${lng})[highway][maxspeed];out geom 6;`;
   const mirror = OVERPASS_MIRRORS[overpassMirrorIndex % OVERPASS_MIRRORS.length];
   try{
-    // Overpass API: otsi lähim tee (highway) 40m raadiuses ja loe selle maxspeed silt.
     // NB: see päring vajab, et leht oleks avatud http(s)-serverist, mitte file:// kaudu.
     // Avalik Overpass-teenus on aeg-ajalt üle koormatud (504) — proovime mitut peeglit kordamööda.
     const url = mirror + '?data=' + encodeURIComponent(q);
     const res = await fetch(url);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const data = await res.json();
-    const way = data.elements && data.elements.find(e => e.tags && e.tags.maxspeed);
-    if (way && way.tags.maxspeed){
-      const raw = way.tags.maxspeed;
+    const candidates = (data.elements || []).filter(e => e.tags && e.tags.maxspeed && Array.isArray(e.geometry) && e.geometry.length > 1);
+
+    const here = L.latLng(lat, lng);
+    let best = null, bestDist = Infinity;
+    candidates.forEach(way=>{
+      for (let i=0; i<way.geometry.length-1; i++){
+        const a = L.latLng(way.geometry[i].lat, way.geometry[i].lon);
+        const b = L.latLng(way.geometry[i+1].lat, way.geometry[i+1].lon);
+        const proj = closestPointOnSegment(a, b, here);
+        if (proj.dist < bestDist){ bestDist = proj.dist; best = way; }
+      }
+    });
+
+    if (best && bestDist < 25){
+      const raw = best.tags.maxspeed;
       const num = parseInt(raw, 10);
       lastKnownSpeedLimit = !isNaN(num) ? num : raw;
       document.getElementById('speedLimitReadout').textContent = num ? num + ' km/h' : raw;
@@ -2472,6 +2715,7 @@ function updateMeasureLine(){
   }
 }
 document.getElementById('toolMeasure').onclick = function(){
+  if (rotateModeGuard()) return;
   const isActive = this.classList.contains('active');
   deactivateTools();
   clearMeasure();
@@ -2678,6 +2922,7 @@ function renderWaypoints(){
 }
 
 document.getElementById('routeAddFromMap').onclick = function(){
+  if (rotateModeGuard()) return;
   const turningOn = !routeMapPickActive;
   deactivateTools();
   if (!turningOn) return;
@@ -2710,7 +2955,7 @@ function clearRouteLayers(){
 }
 
 // punkt 2: palju tugevam visuaal — tume "haloo" all + ere joon peal + suunanooled
-function drawRouteLine(latlngs){
+function drawRouteLine(latlngs, fitView){
   clearRouteLayers();
   const halo = L.polyline(latlngs, { color:'#000000', weight:11, opacity:0.35, lineJoin:'round', lineCap:'round' }).addTo(map);
   const core = L.polyline(latlngs, { color:'#2fd6ae', weight:5, opacity:1, lineJoin:'round', lineCap:'round' }).addTo(map);
@@ -2729,7 +2974,11 @@ function drawRouteLine(latlngs){
     const arrow = L.marker(p2, { icon, interactive:false }).addTo(map);
     routeLayers.push(arrow);
   }
-  map.fitBounds(core.getBounds(), { padding:[50,50] });
+  // fitView=false korral (nt kiire re-route navigeerimise ajal) EI muudeta
+  // kaardi suumi/asendit — muidu "hüppaks" vaade iga ümbermarsruutimisega suureks.
+  if (fitView !== false){
+    map.fitBounds(core.getBounds(), { padding:[50,50] });
+  }
 }
 
 async function computeRoute(waypointsList){
@@ -2747,14 +2996,14 @@ async function computeRoute(waypointsList){
   return route;
 }
 
-function applyRouteResult(route){
+function applyRouteResult(route, fitView){
   const profile = document.getElementById('routeProfile').value;
   console.log('Regio routing vastus (kontrolli geometry.coordinates pikkust):', route);
 
   lastRouteLatLngs = null;
   if (route.geometry && route.geometry.coordinates && route.geometry.coordinates.length > 1){
     const latlngs = route.geometry.coordinates.map(c=>[c[1], c[0]]);
-    drawRouteLine(latlngs);
+    drawRouteLine(latlngs, fitView);
     lastRouteLatLngs = latlngs;
     document.getElementById('btnAnimateRoute').style.display = '';
     document.getElementById('btnStartNav').style.display = '';
@@ -2947,6 +3196,7 @@ function startNavigation(){
   followMode = true;
   navOwnsTracking = !speedTrackingOn;
   speedTrackingOn = true;
+  if (map.getZoom() < 16) map.setZoom(16); // mõistlik algne suum, ei muudeta enam hiljem iga uuendusega
   updateLocateButtonVisual();
   document.getElementById('dashSpeedBlock').style.opacity = '1';
   document.getElementById('navHud').style.display = 'flex';
@@ -2977,16 +3227,15 @@ function stopNavigation(){
 async function onNavPosition(pos){
   if (!navActive) return;
   const here = L.latLng(pos.coords.latitude, pos.coords.longitude);
-  if (followMode) map.setView(here, Math.max(map.getZoom(), 16), { animate:true });
-  onSpeedPosition(pos); // uuenda ka kiiruse armatuurlauda ja markerit (koos snap-to-road'iga)
+  onSpeedPosition(pos); // uuenda kiiruse armatuurlauda, markerit (snap-to-road'iga) JA kaardi järgimist — üks ühtne, sujuv liikumine
 
   if (!lastRouteLatLngs) return;
   const proj = projectOntoRoute(lastRouteLatLngs, here);
 
   // marsruudilt kõrvale kaldumise tuvastus + kiire automaatne ümbermarsruutimine
-  if (proj.distFromRoute > 35){
+  if (proj.distFromRoute > 10){
     navOffRouteStrikes++;
-    if (navOffRouteStrikes >= 1 && Date.now() - navLastRecalc > 8000){
+    if (navOffRouteStrikes >= 1 && Date.now() - navLastRecalc > 4000){
       navLastRecalc = Date.now();
       document.getElementById('navInstruction').textContent = 'Arvutan uue marsruudi...';
       toast('Läksid marsruudilt kõrvale — arvutan kiiresti uuesti.');
@@ -2994,7 +3243,7 @@ async function onNavPosition(pos){
         const dest = routeWaypoints[routeWaypoints.length - 1];
         const here2 = { lat: here.lat, lng: here.lng, label: 'Praegune asukoht' };
         const route = await computeRoute([here2, dest]);
-        applyRouteResult(route);
+        applyRouteResult(route, false); // false = ära muuda kaardi suumi/vaadet
         buildNavSteps();
         navStepIndex = 0;
         navAnnounced = { far:false, near:false, imminent:false };
@@ -3368,6 +3617,26 @@ document.getElementById('fileImport').onchange = (e)=>{
   reader.readAsText(file);
 };
 
+/* ---------------- laadimisekraan ---------------- */
+const loadingScreenStart = Date.now();
+const LOADING_SCREEN_MIN_MS = 700;
+let loadingScreenHidden = false;
+function hideLoadingScreen(){
+  if (loadingScreenHidden) return;
+  loadingScreenHidden = true;
+  const elapsed = Date.now() - loadingScreenStart;
+  const wait = Math.max(0, LOADING_SCREEN_MIN_MS - elapsed);
+  setTimeout(()=>{
+    const el = document.getElementById('loadingScreen');
+    if (!el) return;
+    el.classList.add('hide');
+    setTimeout(()=> el.remove(), 650);
+  }, wait);
+}
+// turvavõrk: kui midagi peaks kaardi laadimisel kinni jääma, ei jää kasutaja
+// kunagi igaveseks laadimisekraani taha lõksu
+setTimeout(hideLoadingScreen, 6000);
+
 /* ---------------- boot ---------------- */
 try{
   applyEmbedModeIfNeeded();
@@ -3382,9 +3651,15 @@ try{
   applyLanguage();
   loadPoiCategories();
   updateClock();
+  hideLoadingScreen();
+  // Alusta asukoha jälgimist automaatselt — kui luba on juba varem antud
+  // (nt PWA/mobiilirakendus), käivitub see hääletult; kui mitte, küsib
+  // brauser luba kohe. Nii on sinu asukoht rakenduse avamisel alati olemas.
+  startLocationTracking();
 }catch(err){
   console.error('REGIO NAV alglaadimise viga:', err);
   toast('Rakenduse laadimisel tekkis viga — ava konsool (F12), et näha täpsemalt.');
+  hideLoadingScreen();
 }
 
 /* ---------------- PWA: Service Worker registreerimine ----------------
