@@ -125,12 +125,21 @@
     #helpButton{ bottom:auto; top:14px; right:8px; }
     #toolbarToggleBtn{
       display:flex; align-items:center; justify-content:center;
-      width:30px; height:30px; border-radius:7px; flex-shrink:0;
-      background:var(--ink); border:1px solid var(--line); color:var(--text); cursor:pointer; padding:0;
+      width:40px; height:40px; border-radius:9px; flex-shrink:0;
+      background:var(--rust); border:1px solid var(--rust); color:#fff; cursor:pointer; padding:0;
+      box-shadow:0 6px 18px -4px #000000aa;
     }
-    #toolbarButtons{ display:none; flex-direction:column; gap:4px; }
+    #toolbarToggleBtn.open{ background:var(--ink); border-color:var(--line); color:var(--text); }
+    #toolbarButtons{ display:none; flex-direction:column; gap:4px; margin-top:4px; }
     #toolbarButtons.show{ display:flex; }
-    #navHud{ top:auto; bottom:78px; max-width:92vw; }
+    #navHud{
+      top:auto; bottom:78px; max-width:76vw; padding:6px 10px; gap:8px; border-radius:10px;
+    }
+    #navManeuverIcon svg{ width:16px; height:16px; }
+    #navInstruction{ font-size:11.5px; }
+    #navSub{ font-size:9px; }
+    #btnStopNav{ width:26px; height:26px; }
+    #btnStopNav svg{ width:14px; height:14px; }
   }
   #toolbarToggleBtn{ display:none; }
   #toolbarButtons{ display:flex; flex-direction:column; gap:4px; }
@@ -1956,8 +1965,9 @@ document.getElementById('menuToggleBtn').onclick = ()=>{
 };
 document.getElementById('sidebarCloseBtn').onclick = closeSidebar;
 document.getElementById('sidebarOverlay').onclick = closeSidebar;
-document.getElementById('toolbarToggleBtn').onclick = ()=>{
-  document.getElementById('toolbarButtons').classList.toggle('show');
+document.getElementById('toolbarToggleBtn').onclick = function(){
+  const shown = document.getElementById('toolbarButtons').classList.toggle('show');
+  this.classList.toggle('open', shown);
 };
 
 /* ---------------- file:// hoiatus ---------------- */
