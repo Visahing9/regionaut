@@ -123,7 +123,17 @@
     #drawToolbar{ top:auto; bottom:40px; right:8px; }
     .tool-btn{ width:40px; height:40px; }
     #helpButton{ bottom:auto; top:14px; right:8px; }
+    #toolbarToggleBtn{
+      display:flex; align-items:center; justify-content:center;
+      width:30px; height:30px; border-radius:7px; flex-shrink:0;
+      background:var(--ink); border:1px solid var(--line); color:var(--text); cursor:pointer; padding:0;
+    }
+    #toolbarButtons{ display:none; flex-direction:column; gap:4px; }
+    #toolbarButtons.show{ display:flex; }
+    #navHud{ top:auto; bottom:78px; max-width:92vw; }
   }
+  #toolbarToggleBtn{ display:none; }
+  #toolbarButtons{ display:flex; flex-direction:column; gap:4px; }
   #brand{
     padding:19px 18px 15px 18px; border-bottom:1px solid var(--line);
     display:flex; align-items:center; gap:2px;
@@ -412,6 +422,7 @@
     100%{ transform:translateY(0) scale(1); }
   }
   .poi-pin{ animation: dropIn .35s ease-out; }
+  .live-location-icon{ transition: transform 0.4s linear; }
 
   body.embed-mode #sidebar{ display:none; }
   body.embed-mode #drawToolbar{ display:none; }
@@ -821,6 +832,10 @@
       <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.2"/><path d="M9.4 9.3a2.6 2.6 0 1 1 3.6 2.4c-.9.4-1.2 1-1.2 1.7v.3"/><circle cx="12" cy="16.8" r="0.35" fill="currentColor" stroke="none"/></svg>
     </button>
     <div id="drawToolbar">
+      <button id="toolbarToggleBtn" title="Näita/peida tööriistad">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 4l8 8-8 8"/></svg>
+      </button>
+      <div id="toolbarButtons">
       <button class="tool-btn" id="toolPoi" title="Lisa POI" data-i18n-title="tool.poi" style="--icon-color:#c1622e;">
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-6.5-7-11.6A7 7 0 0 1 19 9.4C19 14.5 12 21 12 21z"/><circle cx="12" cy="9.4" r="2.3"/></svg>
       </button>
@@ -847,6 +862,7 @@
       <button class="tool-btn" id="toolDelete" title="Kustuta kujund" data-i18n-title="tool.delete" style="--icon-color:#c1543f;">
         <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.2 7.2h15.6"/><path d="M9.2 7.2V4.9c0-.6.5-1.1 1.1-1.1h3.4c.6 0 1.1.5 1.1 1.1v2.3"/><path d="M6.4 7.2l1 12.4c0 .6.5 1.1 1.1 1.1h6.9c.6 0 1.1-.5 1.1-1.1l1-12.4"/><path d="M10.2 11v6M13.8 11v6"/></svg>
       </button>
+      </div>
     </div>
     <div id="statusBar">
       <span>φλ: <b id="coordReadout">—</b></span>
@@ -1924,6 +1940,9 @@ document.getElementById('menuToggleBtn').onclick = ()=>{
 };
 document.getElementById('sidebarCloseBtn').onclick = closeSidebar;
 document.getElementById('sidebarOverlay').onclick = closeSidebar;
+document.getElementById('toolbarToggleBtn').onclick = ()=>{
+  document.getElementById('toolbarButtons').classList.toggle('show');
+};
 
 /* ---------------- file:// hoiatus ---------------- */
 function checkFileProtocolWarning(){
@@ -2138,10 +2157,55 @@ document.getElementById('toolSpeedToggle').onclick = function(){
     updateSpeedLimitDashboard(null);
     document.getElementById('dashSpeedBlock').style.opacity = '0.35';
     toast('Kiiruse jälgimine väljas.');
+    maybeRemoveLiveLocationMarker();
   }
 };
 
 let speedLimitBlockedUntil = 0;
+
+/* ---------------- elav asukohamarker (liigub, vahetab ikooni liikumisviisi järgi) ---------------- */
+let liveLocationMarker = null;
+
+function liveModeIconInner(mode){
+  const icons = {
+    foot: `<svg viewBox="0 0 24 24" width="18" height="18" fill="#fff"><circle cx="12" cy="4.2" r="2.1"/><path d="M14.8 8.3c-.6-.7-1.6-1.1-2.8-1.1s-2.2.4-2.8 1.1c-.5.6-.8 1.4-.9 2.2l-.6 3.9 1.9.3.9-3.6.6.9-1.1 4.6 1.9.5 1.4-4 .9 1v4.4h2v-4.9c0-.5-.2-1-.5-1.4l-1.6-2 .4-1.6.8 1.4 2.1.6.5-1.9-1.5-.4-1.6-2.4z"/></svg>`,
+    car: `<svg viewBox="0 0 24 24" width="19" height="19" fill="#fff"><path d="M5.2 16.2l.9-4.4a2 2 0 0 1 1.7-1.6l.4-1.2A2 2 0 0 1 10.1 7.6h3.8a2 2 0 0 1 1.9 1.4l.4 1.2a2 2 0 0 1 1.7 1.6l.9 4.4v1.6a1 1 0 0 1-1 1h-.6a1 1 0 0 1-1-1v-.7H7.8v.7a1 1 0 0 1-1 1h-.6a1 1 0 0 1-1-1z"/><circle cx="8.3" cy="15" r="1.3" fill="#0a0a0a"/><circle cx="15.7" cy="15" r="1.3" fill="#0a0a0a"/></svg>`,
+    truck: `<svg viewBox="0 0 24 24" width="19" height="19" fill="#fff"><path d="M3.5 7.5h8.5v7.2H3.5zM12.5 10.3h3.3l2.7 2.8v1.6h-6z"/><circle cx="7.2" cy="16.3" r="1.5" fill="#0a0a0a"/><circle cx="16.8" cy="16.3" r="1.5" fill="#0a0a0a"/></svg>`,
+    unknown: `<svg viewBox="0 0 24 24" width="13" height="13" fill="#fff"><circle cx="12" cy="12" r="8"/></svg>`
+  };
+  return icons[mode] || icons.unknown;
+}
+
+function inferLiveMode(speedMs){
+  if (navActive){
+    const profile = document.getElementById('routeProfile').value;
+    if (profile === 'foot') return 'foot';
+    if (profile === 'truck') return 'truck';
+    return 'car';
+  }
+  if (speedMs == null || isNaN(speedMs)) return 'unknown';
+  return (speedMs * 3.6) < 7 ? 'foot' : 'car';
+}
+
+function updateLiveLocationMarker(lat, lng, mode, heading){
+  const rot = (heading != null && !isNaN(heading)) ? `transform:rotate(${heading}deg);` : '';
+  const html = `<div style="width:36px;height:36px;border-radius:50%;background:var(--rust);border:3px solid #fff;
+    box-shadow:0 3px 14px -2px #000000aa;display:flex;align-items:center;justify-content:center;${rot}">${liveModeIconInner(mode)}</div>`;
+  const icon = L.divIcon({ className:'live-location-icon', html, iconSize:[36,36], iconAnchor:[18,18] });
+  if (!liveLocationMarker){
+    liveLocationMarker = L.marker([lat,lng], { icon, interactive:false, zIndexOffset:2000 }).addTo(map);
+  } else {
+    liveLocationMarker.setLatLng([lat,lng]);
+    liveLocationMarker.setIcon(icon);
+  }
+}
+
+function maybeRemoveLiveLocationMarker(){
+  if (!speedTrackingOn && !navActive && liveLocationMarker){
+    map.removeLayer(liveLocationMarker);
+    liveLocationMarker = null;
+  }
+}
 
 function onSpeedPosition(pos){
   const speedMs = pos.coords.speed; // m/s, võib olla null kui seade ei suuda kiirust arvutada
@@ -2153,6 +2217,7 @@ function onSpeedPosition(pos){
     document.getElementById('speedReadout').textContent = '—';
     updateSpeedDashboard(null);
   }
+  updateLiveLocationMarker(pos.coords.latitude, pos.coords.longitude, inferLiveMode(speedMs), pos.coords.heading);
   if (Date.now() < speedLimitBlockedUntil) return; // äsja ebaõnnestus, ei proovi kohe uuesti
   clearTimeout(speedLimitDebounceTimer);
   speedLimitDebounceTimer = setTimeout(()=>fetchSpeedLimit(pos.coords.latitude, pos.coords.longitude), 1500);
@@ -2684,6 +2749,7 @@ function stopNavigation(){
   if (navWatchId != null){ navigator.geolocation.clearWatch(navWatchId); navWatchId = null; }
   document.getElementById('navHud').style.display = 'none';
   window.speechSynthesis && window.speechSynthesis.cancel();
+  maybeRemoveLiveLocationMarker();
 }
 
 async function onNavPosition(pos){
