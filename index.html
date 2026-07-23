@@ -1753,7 +1753,12 @@ function tileLayerForKind(kind){
   if (kind === 'regio-tms'){
     if (!settings.apiKey) return null;
     const url = DEFAULTS.tmsUrl.replace('{key}', settings.apiKey);
-    return L.tileLayer(url, { tms:true, noWrap:true, maxZoom:17, attribution:'© Regio', errorTileUrl:'https://api.regio.ee/map/img/pixel.png' });
+    return L.tileLayer(url, {
+      tms:true, noWrap:true, maxZoom:17, attribution:'© Regio', errorTileUrl:'https://api.regio.ee/map/img/pixel.png',
+      // Vähendame päringute hulka: laadi uued tükid alles siis, kui liigutamine/suumimine
+      // on LÕPPENUD (mitte iga vahepealse kaadri kohta), ja hoia väiksemat puhvrit.
+      updateWhenIdle:true, updateWhenZooming:false, keepBuffer:1
+    });
   }
   if (kind === 'maaamet'){
     // REGIO CONFIG: Maa-ameti ametlik avalik WMTS, EPSG:3857 (GMC), ei vaja võtit.
@@ -2503,6 +2508,10 @@ function updateLiveLocationMarker(lat, lng, mode, heading){
     const icon = L.divIcon({ className:'live-location-icon', html: liveMarkerHtml(mode, targetHeading), iconSize:[36,36], iconAnchor:[18,18] });
     liveLocationMarker = L.marker(targetLatLng, { icon, interactive:false, zIndexOffset:2000 }).addTo(map);
     liveLocationMarker.__mode = mode;
+    // Esimesel kaardil ilmumisel liigume kaardiga kohe (ilma animatsioonita) sinna —
+    // navigeerimise ajal veidi lähemale suumituna kui tavalise jälgimise puhul.
+    if (followMode) map.setView(targetLatLng, Math.max(map.getZoom(), navActive ? 18 : 16), { animate:false });
+    if (rotateMode) setMapRotation(targetHeading);
     return;
   }
 
@@ -2514,22 +2523,36 @@ function updateLiveLocationMarker(lat, lng, mode, heading){
   const startLatLng = liveMarkerCurrentLatLng || liveLocationMarker.getLatLng();
   const startHeading = liveMarkerCurrentHeading;
   const headingDelta = shortestAngleDelta(startHeading, targetHeading);
-  const duration = 900;
+  const duration = 800;
   const startTime = performance.now();
   const animId = ++liveMarkerAnimId;
+  const doFollow = followMode;
+  const doRotate = rotateMode;
+  const zoomNow = map.getZoom();
 
+  // TÄHTIS: marker, kaardi keskpunkt ja pööramisnurk animeeritakse KÕIK
+  // sama rAF-tsükli sees, sama 't' väärtusega — nii ei saa need omavahel
+  // lahku minna (mis tekitaks nähtavat "libisemist"/tõksumist).
   function step(now){
     if (animId !== liveMarkerAnimId || !liveLocationMarker) return;
     const t = Math.min(1, (now - startTime) / duration);
     const curLat = startLatLng.lat + (targetLatLng.lat - startLatLng.lat) * t;
     const curLng = startLatLng.lng + (targetLatLng.lng - startLatLng.lng) * t;
     const curHeading = startHeading + headingDelta * t;
+
     liveLocationMarker.setLatLng([curLat, curLng]);
     const el = liveLocationMarker.getElement();
     if (el){
       const inner = el.querySelector('.live-location-dot');
       if (inner) inner.style.transform = `rotate(${curHeading}deg)`;
     }
+    if (doRotate){
+      setMapRotation(curHeading);
+      map.setView([curLat, curLng], zoomNow, { animate:false });
+    } else if (doFollow){
+      map.setView([curLat, curLng], zoomNow, { animate:false });
+    }
+
     liveMarkerCurrentLatLng = L.latLng(curLat, curLng);
     liveMarkerCurrentHeading = curHeading;
     if (t < 1) requestAnimationFrame(step);
@@ -2543,6 +2566,8 @@ function maybeRemoveLiveLocationMarker(){
     liveLocationMarker = null;
   }
 }
+
+let lastPositionForHeading = null;
 
 function onSpeedPosition(pos){
   const speedMs = pos.coords.speed; // m/s, võib olla null kui seade ei suuda kiirust arvutada
@@ -2562,20 +2587,27 @@ function onSpeedPosition(pos){
     const proj = projectOntoRoute(lastRouteLatLngs, L.latLng(pos.coords.latitude, pos.coords.longitude));
     if (proj.distFromRoute < 40){ markerLat = proj.snapped.lat; markerLng = proj.snapped.lng; }
   }
-  updateLiveLocationMarker(markerLat, markerLng, inferLiveMode(speedMs), pos.coords.heading);
+
+  // Suund: kasuta GPS-i enda suunaandmeid, kui olemas. Need on aga tihti NULL,
+  // kui seisad paigal või liigud väga aeglaselt (GPS ei suuda siis suunda
+  // usaldusväärselt arvutada) — sel juhul tuletame suuna eelmise ja praeguse
+  // asukoha vahelt ise, et pööramine/nool ei jääks "kinni".
+  let heading = (pos.coords.heading != null && !isNaN(pos.coords.heading)) ? pos.coords.heading : null;
+  if (heading == null && lastPositionForHeading){
+    const moved = map.distance(lastPositionForHeading, L.latLng(markerLat, markerLng));
+    if (moved > 2) heading = bearingDeg([lastPositionForHeading.lat, lastPositionForHeading.lng], [markerLat, markerLng]);
+  }
+  if (heading == null) heading = liveMarkerCurrentHeading;
+  lastPositionForHeading = L.latLng(markerLat, markerLng);
 
   if (speedTrackingFirstFix){
     speedTrackingFirstFix = false;
-    map.setView([markerLat, markerLng], Math.max(map.getZoom(), 16));
     toast('Asukoht leitud.');
-  } else if (followMode){
-    // panTo koos kestusega annab palju sujuvama, ühtlasema liikumise kui
-    // korduv setView (mis katkestab eelmise animatsiooni ja tekitab tõksumist).
-    map.panTo([markerLat, markerLng], { animate:true, duration:0.9, easeLinearity:0.4, noMoveStart:true });
   }
-  if (rotateMode && pos.coords.heading != null && !isNaN(pos.coords.heading)){
-    setMapRotation(pos.coords.heading);
-  }
+
+  // Kaardi liigutamine/pööramine toimub nüüd TÄIELIKULT updateLiveLocationMarker
+  // sees, samas rAF-tsüklis markeriga — see tagab, et need kunagi lahku ei lähe.
+  updateLiveLocationMarker(markerLat, markerLng, inferLiveMode(speedMs), heading);
 
   if (Date.now() < speedLimitBlockedUntil) return; // äsja ebaõnnestus, ei proovi kohe uuesti
   clearTimeout(speedLimitDebounceTimer);
@@ -3228,6 +3260,7 @@ function fmtDist(m){
 }
 
 let navOwnsTracking = false;
+let navOwnsRotation = false;
 
 function startNavigation(){
   if (!lastRouteLatLngs || lastRouteLatLngs.length < 2){ toast('Arvuta enne marsruut.'); return; }
@@ -3245,7 +3278,11 @@ function startNavigation(){
   // iga asukohauuenduse peale (see tekitaski "tõksumise" tunde navigeerimisel).
   if (speedWatchId != null){ navigator.geolocation.clearWatch(speedWatchId); speedWatchId = null; }
   speedTrackingOn = true;
-  if (map.getZoom() < 16) map.setZoom(16); // mõistlik algne suum, ei muudeta enam hiljem iga uuendusega
+  if (map.getZoom() < 18) map.setZoom(18); // navigeerimise ajal veidi lähemale suumitud vaikeväärtus
+  // Navigeerimise ajal peab kaart ALATI olema sõidusuunas — lülitame
+  // pööramisrežiimi automaatselt sisse, kasutaja ei pea seda ise valima.
+  navOwnsRotation = !rotateMode;
+  if (!rotateMode) enableRotateMode();
   updateLocateButtonVisual();
   document.getElementById('dashSpeedBlock').style.opacity = '1';
   document.getElementById('navHud').style.display = 'flex';
@@ -3264,6 +3301,7 @@ function stopNavigation(){
   if (navWatchId != null){ navigator.geolocation.clearWatch(navWatchId); navWatchId = null; }
   document.getElementById('navHud').style.display = 'none';
   window.speechSynthesis && window.speechSynthesis.cancel();
+  if (navOwnsRotation && rotateMode) disableRotateMode();
   if (navOwnsTracking){
     speedTrackingOn = false;
     followMode = false;
