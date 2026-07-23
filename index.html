@@ -1371,6 +1371,8 @@ function buildMap(crsMode){
   maaametPoiLayer = null;
   speedCamLayer = null;
   regioWmsOverlay = null;
+  routeWaypointMarkersLayer = null;
+  searchResultMarker = null;
   routeLayers = [];
   if (routeAnimTimer){ clearInterval(routeAnimTimer); routeAnimTimer = null; }
 
@@ -1453,6 +1455,7 @@ function buildMap(crsMode){
       onEachFeature: (feature, layer) => layer.bindPopup(droneZonePopup(feature))
     }).addTo(map);
   }
+  if (typeof routeWaypoints !== 'undefined' && routeWaypoints.length > 0) renderWaypointMarkers();
 }
 
 function crsModeFor(kind){ return (kind === 'regio-tms' || kind === 'regio-wms') ? 'est' : 'web'; }
@@ -2294,6 +2297,20 @@ document.getElementById('toolLine').onclick = function(){
   activeDrawHandler.enable();
 };
 
+let searchResultMarker = null;
+function showSearchResultMarker(lat, lng, popupHtml){
+  if (searchResultMarker) map.removeLayer(searchResultMarker);
+  const icon = L.divIcon({
+    className:'poi-pin',
+    html:`<div style="width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);
+      background:var(--rust);border:2px solid #fff;box-shadow:0 2px 10px #0008;"></div>`,
+    iconSize:[28,28], iconAnchor:[14,27]
+  });
+  searchResultMarker = L.marker([lat,lng], { icon, zIndexOffset:900 }).addTo(map);
+  if (popupHtml) searchResultMarker.bindPopup(popupHtml);
+  return searchResultMarker;
+}
+
 document.getElementById('toolIdentify').onclick = function(){
   if (rotateModeGuard()) return;
   const isActive = this.classList.contains('active');
@@ -2305,9 +2322,10 @@ document.getElementById('toolIdentify').onclick = function(){
     this.classList.remove('active');
     map.getContainer().style.cursor = '';
     if (!settings.apiKey){ toast('Lisa Regio API võti Seaded vahekaardil.'); return; }
-    const popup = L.popup().setLatLng(e.latlng).setContent('Otsin aadressi...').openOn(map);
+    const marker = showSearchResultMarker(e.latlng.lat, e.latlng.lng, 'Otsin aadressi...');
+    marker.openPopup();
     const addr = await reverseGeocode(e.latlng.lat, e.latlng.lng);
-    popup.setContent(addr ? escapeHtml(addr) : 'Aadressi ei leitud.');
+    marker.setPopupContent(addr ? escapeHtml(addr) : 'Aadressi ei leitud.');
   });
 };
 
@@ -2368,6 +2386,18 @@ function disableRotateMode(){
   updateLocateButtonVisual();
 }
 
+function armSpeedWatch(){
+  return navigator.geolocation.watchPosition(pos=>{
+    userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+    onSpeedPosition(pos);
+    renderObjList(); // näita objektide nimekirjas kaugused sinust
+  }, err=>{
+    document.getElementById('speedReadout').textContent = '—';
+    updateSpeedDashboard(null);
+    toast('GPS-viga: ' + err.message);
+  }, { enableHighAccuracy:true, maximumAge:2000 });
+}
+
 function startLocationTracking(){
   if (!navigator.geolocation){ toast('Brauser ei toeta GPS-jälgimist.'); return; }
   if (speedTrackingOn){
@@ -2384,15 +2414,7 @@ function startLocationTracking(){
   updateLocateButtonVisual();
   document.getElementById('dashSpeedBlock').style.opacity = '1';
   toast('Otsin asukohta...');
-  speedWatchId = navigator.geolocation.watchPosition(pos=>{
-    userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-    onSpeedPosition(pos);
-    renderObjList(); // näita objektide nimekirjas kaugused sinust
-  }, err=>{
-    document.getElementById('speedReadout').textContent = '—';
-    updateSpeedDashboard(null);
-    toast('GPS-viga: ' + err.message);
-  }, { enableHighAccuracy:true, maximumAge:2000 });
+  speedWatchId = armSpeedWatch();
 }
 
 function stopLocationTracking(){
@@ -2823,7 +2845,7 @@ function wireAddressSearch(inputId, resultsId, countryId, onSelect, clearAfterSe
 
 wireAddressSearch('searchInput', 'searchResults', 'searchCountry', (lat,lng,addr)=>{
   map.setView([lat,lng], 16);
-  L.popup().setLatLng([lat,lng]).setContent(escapeHtml(addr)).openOn(map);
+  showSearchResultMarker(lat, lng, escapeHtml(addr)).openPopup();
 }, false);
 
 // punkt 1: marsruudi otsing lubab järjest lisada kuni 10 peatust —
@@ -2904,6 +2926,27 @@ function addWaypoint(lat, lng, label){
 }
 function removeWaypoint(idx){ routeWaypoints.splice(idx,1); renderWaypoints(); }
 
+let routeWaypointMarkersLayer = null;
+function renderWaypointMarkers(){
+  if (!map) return;
+  if (routeWaypointMarkersLayer) map.removeLayer(routeWaypointMarkersLayer);
+  routeWaypointMarkersLayer = L.layerGroup();
+  routeWaypoints.forEach((w,i)=>{
+    const icon = L.divIcon({
+      className:'poi-pin',
+      html:`<div style="width:26px;height:26px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);
+        background:var(--teal);border:2px solid #fff;box-shadow:0 2px 8px #0007;display:flex;
+        align-items:center;justify-content:center;">
+        <span style="transform:rotate(45deg);color:#fff;font-family:'JetBrains Mono',monospace;font-weight:700;font-size:11px;">${i+1}</span></div>`,
+      iconSize:[26,26], iconAnchor:[13,25]
+    });
+    L.marker([w.lat, w.lng], { icon, zIndexOffset:800 })
+      .bindPopup(`<div class="popup-title">${i+1}. ${escapeHtml(w.label)}</div>`)
+      .addTo(routeWaypointMarkersLayer);
+  });
+  routeWaypointMarkersLayer.addTo(map);
+}
+
 function renderWaypoints(){
   const wrap = document.getElementById('routeWaypoints');
   if (routeWaypoints.length === 0){
@@ -2919,6 +2962,7 @@ function renderWaypoints(){
     });
   }
   document.getElementById('btnCalcRoute').disabled = routeWaypoints.length < 1;
+  renderWaypointMarkers();
 }
 
 document.getElementById('routeAddFromMap').onclick = function(){
@@ -3195,6 +3239,11 @@ function startNavigation(){
   navActive = true;
   followMode = true;
   navOwnsTracking = !speedTrackingOn;
+  // TÄHTIS: kui üldine asukoha jälgimine (speedWatchId) on juba käimas, peatame
+  // selle enne navWatchId käivitamist — muidu jooksevad KAKS paralleelset
+  // GPS-jälgimist korraga, mis andsid kaardile kaks konkureerivat liigutuskäsku
+  // iga asukohauuenduse peale (see tekitaski "tõksumise" tunde navigeerimisel).
+  if (speedWatchId != null){ navigator.geolocation.clearWatch(speedWatchId); speedWatchId = null; }
   speedTrackingOn = true;
   if (map.getZoom() < 16) map.setZoom(16); // mõistlik algne suum, ei muudeta enam hiljem iga uuendusega
   updateLocateButtonVisual();
@@ -3220,6 +3269,10 @@ function stopNavigation(){
     followMode = false;
     updateLocateButtonVisual();
     document.getElementById('dashSpeedBlock').style.opacity = '0.35';
+  } else if (speedTrackingOn){
+    // jälgimine oli sisse lülitatud juba enne navigatsiooni algust — taasta
+    // tavaline (üksik) GPS-vaatlus, et see jätkuks ka pärast navi lõppu
+    speedWatchId = armSpeedWatch();
   }
   maybeRemoveLiveLocationMarker();
 }
