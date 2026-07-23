@@ -974,6 +974,9 @@
         <div id="navInstruction">—</div>
         <div id="navSub"><span id="navDistance">—</span> · <span id="navEta">—</span> · <span id="navTotalRemaining">—</span></div>
       </div>
+      <button class="tool-btn" id="btnRecenterNav" title="Tagasi lähedale" style="--icon-color:#4a7fc1;">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><circle cx="12" cy="12" r="8"/><path d="M12 1v3M12 20v3M1 12h3M20 12h3"/></svg>
+      </button>
       <button class="tool-btn" id="btnStopNav" title="Lõpeta navigatsioon">✕</button>
     </div>
   </div>
@@ -2367,28 +2370,30 @@ function setMapRotation(heading){
 
 function enableRotateMode(){
   rotateMode = true;
+  // Suumimine (näpuga/scrollimisega) jääb LUBATUKS — see on ohutu, kuna
+  // järgimisrežiim tsentreerib sind niikuinii iga GPS-uuendusega tagasi õigesse
+  // kohta. Ainult lohistamine ja klõpsu-tööriistad on keelatud, kuna need
+  // sõltuvad täpsest koordinaadist, mis pööratud kaardil läheks valeks.
   map.dragging.disable();
-  map.scrollWheelZoom.disable();
-  map.doubleClickZoom.disable();
-  if (map.touchZoom) map.touchZoom.disable();
-  if (map.tap) map.tap.disable();
   document.getElementById('map').classList.add('rotating-map');
   setMapRotation(mapRotationDeg);
   updateLocateButtonVisual();
-  toast('Sõidusuunas vaade sees. Objektide lisamiseks/kaardi liigutamiseks vajuta 🧭 uuesti.');
+  toast('Sõidusuunas vaade sees. Suumida võid vabalt — nupp 🎯 viib tagasi lähedale. Kaardi lohistamiseks/objektide lisamiseks vajuta 🧭 uuesti.');
 }
 
 function disableRotateMode(){
   rotateMode = false;
   map.dragging.enable();
-  map.scrollWheelZoom.enable();
-  map.doubleClickZoom.enable();
-  if (map.touchZoom) map.touchZoom.enable();
-  if (map.tap) map.tap.enable();
   const el = document.getElementById('map');
   if (el){ el.style.transform = ''; el.classList.remove('rotating-map'); }
   mapRotationDeg = 0;
   updateLocateButtonVisual();
+}
+
+const NAV_ZOOM = 18;
+function recenterNav(){
+  if (!liveLocationMarker) return;
+  map.setView(liveLocationMarker.getLatLng(), NAV_ZOOM, { animate:true });
 }
 
 function armSpeedWatch(){
@@ -3384,6 +3389,7 @@ async function onNavPosition(pos){
 }
 
 document.getElementById('btnStartNav').onclick = startNavigation;
+document.getElementById('btnRecenterNav').onclick = recenterNav;
 document.getElementById('btnStopNav').onclick = stopNavigation;
 
 document.getElementById('btnClearRoute').onclick = ()=>{
